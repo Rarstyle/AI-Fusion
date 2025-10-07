@@ -29,7 +29,7 @@ func NewLogger(cfg Config, env string) (*zap.Logger, error) {
 		OutputPaths:      []string{cfg.Output},
 		ErrorOutputPaths: []string{cfg.Output},
 		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:        "ts",
+			// TimeKey:        "ts",
 			LevelKey:       "level",
 			NameKey:        "logger",
 			CallerKey:      "caller",
