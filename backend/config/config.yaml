@@ -1,0 +1,16 @@
+env: development
+
+server:
+  host: localhost
+  port: 8080
+
+
+auth:
+  jwt_secret: "some_secret_key"
+  jwt_expiration: 24
+  bcrypt_cost: 12
+
+log:
+  level: info        
+  format: json       
+  output: stdout     
