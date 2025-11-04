@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import React from "react";
 import { useParams, useRouter } from "next/navigation";
 import WorkoutCamera from "@/components/WorkoutCamera";
 import { getExercise } from "@/lib/exercises";
@@ -13,6 +14,10 @@ export default function WorkoutPage() {
   const exercise = getExercise(exerciseId);
 
   const [showInstructions, setShowInstructions] = useState(true);
+  const [mode, setMode] = useState<'camera' | 'upload'>("camera");
+  const [uploading, setUploading] = useState(false);
+  const [feedback, setFeedback] = useState<FormFeedback[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleComplete = (reps: RepData[], feedback: FormFeedback[]) => {
     // Store session data in sessionStorage
@@ -28,14 +33,8 @@ export default function WorkoutPage() {
 
   if (showInstructions) {
     return (
-      <div
-        className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4"
-        data-oid="yu_d852"
-      >
-        <div
-          className="max-w-2xl w-full bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8"
-          data-oid="w7xk6jv"
-        >
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8">
           {/* Exercise Info */}
           <div className="text-center mb-8" data-oid="rwd0uex">
             <div className="text-6xl mb-4" data-oid="9qd7y5y">
@@ -203,21 +202,34 @@ export default function WorkoutPage() {
             </div>
           </div>
 
+          {/* Mode Selection */}
+          <div className="flex gap-4 mb-6">
+            <button
+              className={`flex-1 px-6 py-4 rounded-lg font-semibold transition-colors ${mode === 'camera' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+              onClick={() => setMode('camera')}
+            >
+              Use Camera
+            </button>
+            <button
+              className={`flex-1 px-6 py-4 rounded-lg font-semibold transition-colors ${mode === 'upload' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+              onClick={() => setMode('upload')}
+            >
+              Upload Video
+            </button>
+          </div>
           {/* Start Button */}
-          <div className="flex gap-4" data-oid="nelov-0">
+          <div className="flex gap-4">
             <button
               onClick={() => router.back()}
               className="flex-1 px-6 py-4 bg-slate-700 text-white font-semibold rounded-lg hover:bg-slate-600 transition-colors"
-              data-oid="1ehr:sq"
             >
               Back
             </button>
             <button
               onClick={() => setShowInstructions(false)}
               className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-lg"
-              data-oid="ffsy-hn"
             >
-              Start Workout
+              Start
             </button>
           </div>
         </div>
@@ -225,11 +237,71 @@ export default function WorkoutPage() {
     );
   }
 
+  // Main workout logic
+  if (mode === "camera") {
+    return (
+      <WorkoutCamera
+        exerciseId={exerciseId}
+        onComplete={handleComplete}
+      />
+    );
+  }
+
+  // Video upload mode
   return (
-    <WorkoutCamera
-      exerciseId={exerciseId}
-      onComplete={handleComplete}
-      data-oid="n6ng_tq"
-    />
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+      <div className="max-w-xl w-full bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8">
+        <h2 className="text-2xl font-bold text-white mb-4 text-center">Upload Your Exercise Video</h2>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setError(null);
+            setFeedback(null);
+            setUploading(true);
+            const formData = new FormData(e.target as HTMLFormElement);
+            try {
+              const res = await fetch("/api/analyze-video", {
+                method: "POST",
+                body: formData,
+              });
+              if (!res.ok) throw new Error("Failed to analyze video");
+              const data = await res.json();
+              setFeedback(data.feedback || []);
+            } catch (err: any) {
+              setError(err.message || "Unknown error");
+            } finally {
+              setUploading(false);
+            }
+          }}
+        >
+          <input
+            type="file"
+            name="video"
+            accept="video/*"
+            required
+            className="block w-full mb-4 text-gray-200"
+          />
+          <input type="hidden" name="exerciseId" value={exerciseId} />
+          <button
+            type="submit"
+            disabled={uploading}
+            className="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            {uploading ? "Uploading..." : "Analyze Video"}
+          </button>
+        </form>
+        {error && <div className="mt-4 text-red-400 text-center">{error}</div>}
+        {feedback && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold text-white mb-2">Feedback</h3>
+            <ul className="text-gray-300 space-y-2">
+              {feedback.map((fb, idx) => (
+                <li key={idx}>{fb.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
