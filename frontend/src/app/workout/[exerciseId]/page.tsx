@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import WorkoutCamera from "@/components/WorkoutCamera";
 import { getExercise } from "@/lib/exercises";
 import { ExerciseType, FormFeedback, RepData } from "@/types/exercise";
+import { getAuthToken } from "@/lib/api";
 
 export default function WorkoutPage() {
   const params = useParams();
@@ -258,15 +259,38 @@ export default function WorkoutPage() {
             setError(null);
             setFeedback(null);
             setUploading(true);
-            const formData = new FormData(e.target as HTMLFormElement);
+            const formElement = e.currentTarget;
+            const formData = new FormData(formElement);
+
+            const token = getAuthToken();
+            if (!token) {
+              setError("Please log in before uploading a video for analysis.");
+              setUploading(false);
+              return;
+            }
+
             try {
-              const res = await fetch("/api/analyze-video", {
-                method: "POST",
-                body: formData,
-              });
-              if (!res.ok) throw new Error("Failed to analyze video");
-              const data = await res.json();
-              setFeedback(data.feedback || []);
+              const res = await fetch(
+                `/api/analyze-video?exerciseId=${encodeURIComponent(exerciseId)}`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: formData,
+                },
+              );
+
+              const data = await res.json().catch(() => null);
+              if (!res.ok) {
+                const message =
+                  data?.error ||
+                  data?.message ||
+                  "Failed to analyze video. Please try again.";
+                throw new Error(message);
+              }
+
+              setFeedback(data?.feedback || []);
             } catch (err: any) {
               setError(err.message || "Unknown error");
             } finally {
@@ -282,15 +306,23 @@ export default function WorkoutPage() {
             className="block w-full mb-4 text-gray-200"
           />
           <input type="hidden" name="exerciseId" value={exerciseId} />
+          <div className="text-sm text-gray-400 mb-4">
+            Videos are analyzed by the backend service and require an active
+            login (JWT auth).
+          </div>
           <button
             type="submit"
             disabled={uploading}
-            className="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
+            className="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-70"
           >
             {uploading ? "Uploading..." : "Analyze Video"}
           </button>
         </form>
-        {error && <div className="mt-4 text-red-400 text-center">{error}</div>}
+        {error && (
+          <div className="mt-4 text-red-400 text-center">
+            {error}
+          </div>
+        )}
         {feedback && (
           <div className="mt-6">
             <h3 className="text-lg font-semibold text-white mb-2">Feedback</h3>
