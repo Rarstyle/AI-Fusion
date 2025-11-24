@@ -2728,9 +2728,15 @@ function handleAvailableHash(hash) {
     mostRecentCompilationHash = hash;
 }
 function handleStaticIndicator() {
-    if ("TURBOPACK compile-time falsy", 0) //TURBOPACK unreachable
-    {
+    if ("TURBOPACK compile-time truthy", 1) {
         var _window_next_router_components__app;
+        const routeInfo = window.next.router.components[window.next.router.pathname];
+        const pageComponent = routeInfo == null ? void 0 : routeInfo.Component;
+        const appComponent = (_window_next_router_components__app = window.next.router.components['/_app']) == null ? void 0 : _window_next_router_components__app.Component;
+        const isDynamicPage = Boolean(pageComponent == null ? void 0 : pageComponent.getInitialProps) || Boolean(routeInfo == null ? void 0 : routeInfo.__N_SSP);
+        const hasAppGetInitialProps = Boolean(appComponent == null ? void 0 : appComponent.getInitialProps) && (appComponent == null ? void 0 : appComponent.getInitialProps) !== (appComponent == null ? void 0 : appComponent.origGetInitialProps);
+        const isPageStatic = window.location.pathname in isrManifest || !isDynamicPage && !hasAppGetInitialProps;
+        _nextdevtools.dispatcher.onStaticIndicator(isPageStatic);
     }
 }
 /** Handles messages from the server for the Pages Router. */ function processMessage(obj) {
