@@ -72,6 +72,7 @@ func (a *App) setupRoutes() {
 
 	// Video routes
 	protectedRouter.HandleFunc("/videos/upload", a.videoHandler.UploadVideo).Methods("POST")
+	protectedRouter.HandleFunc("/videos/analyze", a.videoHandler.AnalyzeVideo).Methods("POST")
 	protectedRouter.HandleFunc("/videos", a.videoHandler.ListVideos).Methods("GET")
 	protectedRouter.HandleFunc("/videos/{id}", a.videoHandler.GetVideo).Methods("GET")
 	protectedRouter.HandleFunc("/videos/{id}", a.videoHandler.DeleteVideo).Methods("DELETE")
@@ -84,6 +85,7 @@ func (a *App) setupRoutes() {
 		zap.String("logout", "POST /auth/logout"),
 		zap.String("protected", "GET /api/protected"),
 		zap.String("upload_video", "POST /api/videos/upload"),
+		zap.String("analyze_video", "POST /api/videos/analyze"),
 		zap.String("list_videos", "GET /api/videos"),
 		zap.String("get_video", "GET /api/videos/{id}"),
 		zap.String("delete_video", "DELETE /api/videos/{id}"),

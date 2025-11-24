@@ -24,3 +24,32 @@ type VideoListResponse struct {
 	Videos []Video `json:"videos"`
 	Count  int     `json:"count"`
 }
+
+// Analysis models
+type FormFeedback struct {
+	Type      string `json:"type"`
+	Message   string `json:"message"`
+	Severity  string `json:"severity"` // "info", "warning", "error"
+	Timestamp int64  `json:"timestamp"`
+}
+
+type RepAnalysis struct {
+	RepNumber int            `json:"repNumber"`
+	Valid     bool           `json:"valid"`
+	Feedback  []FormFeedback `json:"feedback,omitempty"`
+	Timestamp int64          `json:"timestamp"`
+}
+
+type AnalysisSummary struct {
+	TotalReps    int      `json:"totalReps"`
+	ValidReps    int      `json:"validReps"`
+	FormAccuracy float64  `json:"formAccuracy"` // 0-100
+	CommonIssues []string `json:"commonIssues,omitempty"`
+}
+
+type AnalysisResult struct {
+	VideoID  string          `json:"videoId"`
+	Reps     []RepAnalysis   `json:"reps"`
+	Feedback []FormFeedback  `json:"feedback"`
+	Summary  AnalysisSummary `json:"summary"`
+}

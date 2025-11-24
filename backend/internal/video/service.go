@@ -14,6 +14,7 @@ type Service struct {
 	store      *Store
 	config     *config.VideoConfig
 	storageDir string
+	analyzer   *Analyzer
 }
 
 func NewService(store *Store, cfg *config.VideoConfig) (*Service, error) {
@@ -23,6 +24,7 @@ func NewService(store *Store, cfg *config.VideoConfig) (*Service, error) {
 		store:      store,
 		config:     cfg,
 		storageDir: storageDir,
+		analyzer:   NewAnalyzer(),
 	}, nil
 }
 
@@ -140,4 +142,24 @@ func (s *Service) DeleteVideo(videoID string, userID string) error {
 	}
 
 	return nil
+}
+
+// AnalyzeVideo analyzes an uploaded video and returns form feedback
+func (s *Service) AnalyzeVideo(videoID string, exerciseID string, userID string) (*AnalysisResult, error) {
+	// Get video to verify ownership and get file path
+	video, err := s.GetVideo(videoID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("video not found: %w", err)
+	}
+
+	// Analyze the video
+	result, err := s.analyzer.AnalyzeVideo(video.FilePath, exerciseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to analyze video: %w", err)
+	}
+
+	// Set video ID in result
+	result.VideoID = videoID
+
+	return result, nil
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -214,5 +215,80 @@ func (h *VideoHandler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// AnalyzeVideo handles POST /api/videos/analyze
+// This endpoint uploads a video, analyzes it, and returns feedback in one request
+func (h *VideoHandler) AnalyzeVideo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get user from context
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		h.logger.Error("Failed to get user from context")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Get exercise ID from query parameter
+	exerciseID := r.URL.Query().Get("exerciseId")
+	if exerciseID == "" {
+		http.Error(w, "exerciseId query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse multipart form
+	err := r.ParseMultipartForm(32 << 20) // 32MB max memory
+	if err != nil {
+		h.logger.Error("Failed to parse multipart form", zap.Error(err))
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	// Get file from form
+	file, fileHeader, err := r.FormFile("video")
+	if err != nil {
+		h.logger.Error("Failed to get file from form", zap.Error(err))
+		http.Error(w, "Video file is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Upload video first
+	uploadResponse, err := h.videoService.UploadVideo(fileHeader, claims.UserID)
+	if err != nil {
+		h.logger.Error("Failed to upload video", zap.String("user_id", claims.UserID), zap.Error(err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	h.logger.Info("Video uploaded, starting analysis",
+		zap.String("user_id", claims.UserID),
+		zap.String("video_id", uploadResponse.VideoID),
+		zap.String("exercise_id", exerciseID))
+
+	// Analyze the uploaded video
+	analysisResult, err := h.videoService.AnalyzeVideo(uploadResponse.VideoID, exerciseID, claims.UserID)
+	if err != nil {
+		h.logger.Error("Failed to analyze video",
+			zap.String("user_id", claims.UserID),
+			zap.String("video_id", uploadResponse.VideoID),
+			zap.Error(err))
+		http.Error(w, fmt.Sprintf("Failed to analyze video: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("Video analyzed successfully",
+		zap.String("user_id", claims.UserID),
+		zap.String("video_id", uploadResponse.VideoID),
+		zap.Int("reps", len(analysisResult.Reps)),
+		zap.Int("feedback_count", len(analysisResult.Feedback)))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(analysisResult)
 }
 
