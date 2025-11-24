@@ -1,20 +1,32 @@
-# ML Service Stub
+# ML Service
 
-Rule-based placeholder for the future pose/rep analysis pipeline.
+Rule-based squat analysis plus a deterministic stub for other cases.
 
 ## Files
-- `analyzer.py` — public entry points (`analyze_session`, `generate_human_readable_summary`) and stub logic.
-- `models.py` — dataclasses for request/response + `ErrorCodes`.
-- `config.py` — stub flags, error descriptions, and model config placeholders.
-- `pipeline.py` — skeleton for real pose extraction and rep classification (future).
+- `analyzer.py` - public entry points (`analyze_session`, `generate_human_readable_summary`), stub path, and real path that calls the rule-based pipeline when `STUB_MODE = False`.
+- `pipeline.py` - pose extraction, rep segmentation, rule-based squat scoring, and a future-ready feature extractor.
+- `models.py` - dataclasses for request/response + `ErrorCodes`.
+- `config.py` - stub flags, rule-based thresholds, model paths, and error descriptions.
 
-## Interface
-- Entry point: `ml_service.analyzer.analyze_session(request: AnalysisRequest) -> SessionFeedback`.
-- Input model: `AnalysisRequest` with `session_id`, `user_id`, `exercise`, `video_path`.
-- Output model: `SessionFeedback` with per-rep feedback, aggregated errors, and simple next-session plan.
-- Optional helper: `generate_human_readable_summary(SessionFeedback) -> str`.
+## Data flow
+1) Video -> `extract_pose_features(video_path)`  
+   - Uses MediaPipe Pose (via OpenCV) to read frames, sample every Nth frame, and return a list of `PoseFrame` objects.  
+   - `PoseFrame` fields: `frame_index`, `timestamp_ms`, `keypoints` (`joint_name -> (x, y, z, visibility)` in normalized coordinates). Frames with no detection carry an empty dict.
+2) Pose frames -> `segment_squat_reps(pose_frames)`  
+   - Finite-state machine over hip height ("top", "going_down", "bottom", "going_up").  
+   - Emits `RepSegment` objects with `rep_index`, start/end timestamps, and the frames belonging to that rep.
+3) Segments -> `analyze_squat_reps(rep_segments)`  
+   - Rule-based checks for squat depth, knee tracking, and torso angle.  
+   - Returns `SessionFeedback` with per-rep `RepFeedback`, aggregated counts, and a `next_session_plan` derived from `ERROR_DEFINITIONS`.
+4) (Future) Segments -> `extract_rep_features(rep_segments)`  
+   - Stub that will hold engineered numeric features (angles, amplitudes, durations) for a trainable model.
 
-## JSON contract
+## Current behavior
+- Default path is the deterministic stub (`STUB_MODE = True`).  
+- When `STUB_MODE = False` and `USE_RULE_BASED_ANALYZER = True`, `_analyze_session_real` will run the real squat pipeline. Other exercises currently return a "not supported yet" message with zero reps.
+- Thresholds and paths live in `config.py` (`RULE_BASED_THRESHOLDS`, `PATHS`, flags for rule-based vs. ML analyzer).
+
+## JSON contract (unchanged)
 Request:
 ```json
 {
@@ -29,11 +41,12 @@ Response (example):
 ```json
 {
   "exercise": "squat",
-  "reps_total": 10,
-  "reps_good": 8,
+  "reps_total": 3,
+  "reps_good": 1,
   "reps_bad": 2,
   "errors_aggregated": {
-    "shallow_depth": 2
+    "shallow_depth": 2,
+    "knees_caving": 1
   },
   "per_rep": [
     {"rep_index": 1, "ok": true, "issues": []},
@@ -57,14 +70,7 @@ return feedback.to_dict()
 ```
 2) Future microservice: wrap `analyze_session` behind an HTTP endpoint and return `SessionFeedback.to_dict()` as JSON. Contract stays the same.
 
-## Behavior (stub)
-- Controlled by `STUB_MODE` in `ml_service/config.py`.
-- Generates deterministic pseudo-feedback using a seeded RNG (per session/user/exercise).
-- Uses `ERROR_DEFINITIONS` for human-facing messages and tips.
-
-## Roadmap to real ML
-- Integrate pose-estimation (e.g., MediaPipe/MoveNet) in `extract_pose_features`.
-- Implement rep segmentation and feature engineering.
-- Train classifier for form errors.
-- Wire `_analyze_session_real` to use the pipeline and set `STUB_MODE = False`.
-- Fill `ML_MODEL_CONFIG` (weights path, architecture, device selection).
+## Roadmap to a trainable model
+- Extract richer per-rep features in `extract_rep_features` (joint angles, stability, cadence).  
+- Train a classifier (RandomForest, GradientBoosting, or a small NN) to predict error labels per rep.  
+- Swap `USE_ML_MODEL_ANALYZER` to `True` once the model path/config is populated and `_analyze_session_real` is wired to the ML scorer.

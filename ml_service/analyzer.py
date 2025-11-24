@@ -5,12 +5,22 @@ Stub analyzer that mimics a future ML-based pipeline.
 from __future__ import annotations
 
 import hashlib
+import logging
 import random
 from typing import Dict, List
 
-from .config import DEFAULT_EXERCISE, ERROR_DEFINITIONS, SEED_FOR_RANDOM, STUB_MODE
+from .config import (
+    DEFAULT_EXERCISE,
+    ERROR_DEFINITIONS,
+    SEED_FOR_RANDOM,
+    STUB_MODE,
+    USE_ML_MODEL_ANALYZER,
+    USE_RULE_BASED_ANALYZER,
+)
 from .models import AnalysisRequest, ErrorCodes, RepFeedback, SessionFeedback
-from .pipeline import classify_reps_from_features, extract_pose_features
+from .pipeline import analyze_squat_reps, extract_pose_features, segment_squat_reps
+
+logger = logging.getLogger(__name__)
 
 
 def analyze_session(request: AnalysisRequest) -> SessionFeedback:
@@ -125,9 +135,39 @@ def _build_next_session_plan(errors_aggregated: Dict[str, int]) -> List[str]:
 
 def _analyze_session_real(request: AnalysisRequest) -> SessionFeedback:
     """
-    Placeholder for the future ML-driven pipeline.
+    Real rule-based pipeline entry point.
     """
-    # TODO: replace with real ML pipeline in _analyze_session_real
-    features = extract_pose_features(request.video_path)
-    feedback = classify_reps_from_features(features)
-    return feedback
+    exercise_raw = (request.exercise or DEFAULT_EXERCISE).strip() or DEFAULT_EXERCISE
+    exercise_key = exercise_raw.lower()
+    logger.info("Running real analyzer for exercise=%s, video=%s", exercise_key, request.video_path)
+
+    if exercise_key != "squat":
+        logger.info("Exercise %s not yet supported by the real analyzer.", exercise_key)
+        return SessionFeedback(
+            exercise=exercise_raw,
+            reps_total=0,
+            reps_good=0,
+            reps_bad=0,
+            errors_aggregated={},
+            per_rep=[],
+            next_session_plan=["Real analysis for this exercise is not yet supported. Using stub soon."],
+        )
+
+    if USE_RULE_BASED_ANALYZER:
+        pose_frames = extract_pose_features(request.video_path)
+        rep_segments = segment_squat_reps(pose_frames)
+        return analyze_squat_reps(rep_segments, exercise=exercise_raw)
+
+    if USE_ML_MODEL_ANALYZER:
+        # TODO: plug in ML classifier when available.
+        logger.warning("ML model analyzer flag is on but no model is wired yet.")
+
+    return SessionFeedback(
+        exercise=exercise_raw,
+        reps_total=0,
+        reps_good=0,
+        reps_bad=0,
+        errors_aggregated={},
+        per_rep=[],
+        next_session_plan=["Real analyzer is disabled. Enable rule-based or ML pipeline in config."],
+    )

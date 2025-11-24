@@ -16,16 +16,9 @@
 - Real-time cues and rep counting on a mid-range phone.
 - On-device processing by default; no raw video uploads.
 
-## ML service stub (Plan B)
-- Entry point: `ml_service.analyzer.analyze_session(request: AnalysisRequest) -> SessionFeedback`.
-- Request JSON: `session_id`, `user_id`, `exercise`, `video_path`.
-- Response JSON: `exercise`, `reps_total`, `reps_good`, `reps_bad`, `errors_aggregated`, `per_rep`, `next_session_plan`.
-- Backend usage:
-```python
-from ml_service.analyzer import analyze_session
-from ml_service.models import AnalysisRequest
-
-feedback = analyze_session(AnalysisRequest(...))
-return feedback.to_dict()
-```
-- Roadmap to real ML: add pose estimation, rep segmentation, error classifier, replace `_analyze_session_real`, and set `STUB_MODE = False`.
+## ML service (stub + rule-based squat)
+- Entry point: `ml_service.analyzer.analyze_session(request: AnalysisRequest) -> SessionFeedback` (same contract).
+- Flags in `ml_service/config.py`: `STUB_MODE` (default True), `USE_RULE_BASED_ANALYZER`, `USE_ML_MODEL_ANALYZER`.
+- Rule-based squat flow when `STUB_MODE = False`: video -> `extract_pose_features` (MediaPipe/OpenCV) -> `segment_squat_reps` (FSM on hip height) -> `analyze_squat_reps` (depth, knees, torso) -> `SessionFeedback` with tips from `ERROR_DEFINITIONS`.
+- Unsupported exercises in real mode return a neutral "not supported yet" message with zero reps; stub path stays deterministic.
+- Future-ready path: `extract_rep_features` will feed a trainable classifier (RandomForest/GBM/NN) once data is available.
