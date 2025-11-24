@@ -62,6 +62,9 @@ func New(cfg *config.Config, logger *zap.Logger) *App {
 }
 
 func (a *App) setupRoutes() {
+	// Apply CORS middleware to all routes
+	a.router.Use(middleware.CORSMiddleware)
+
 	a.router.HandleFunc("/auth/login", a.authHandler.Login).Methods("POST")
 	a.router.HandleFunc("/auth/register", a.authHandler.Register).Methods("POST")
 	a.router.HandleFunc("/auth/logout", a.authHandler.Logout).Methods("POST")
