@@ -24,10 +24,19 @@ type LogConfig struct {
 	Output string `mapstructure:"output"`
 }
 
+// MaxFiles is a limit for a single user's videos.
+type VideoConfig struct {
+	StoragePath   string `mapstructure:"storage_path"`
+	MaxFileSize   int64  `mapstructure:"max_file_size"`
+	MaxFiles      int    `mapstructure:"max_files"`
+	RetentionDays int    `mapstructure:"retention_days"`
+}
+
 type Config struct {
 	Server ServerConfig `mapstructure:"server"`
 	Auth   AuthConfig   `mapstructure:"auth"`
 	Log    LogConfig    `mapstructure:"log"`
+	Video  VideoConfig  `mapstructure:"video"`
 	Env    string       `mapstructure:"env"`
 }
 
@@ -70,6 +79,11 @@ func setDefaults() {
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", "json")
 	viper.SetDefault("log.output", "stdout")
+
+	viper.SetDefault("video.storage_path", "videos")
+	viper.SetDefault("video.max_file_size", 1073741824) // 1GB
+	viper.SetDefault("video.max_files", 100)
+	viper.SetDefault("video.retention_days", 30)
 
 	viper.SetDefault("env", "development")
 }

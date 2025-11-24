@@ -11,6 +11,7 @@ import (
 	"github.com/Rarstyle/AI-Fusion/internal/config"
 	"github.com/Rarstyle/AI-Fusion/internal/handler"
 	"github.com/Rarstyle/AI-Fusion/internal/middleware"
+	"github.com/Rarstyle/AI-Fusion/internal/video"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
 )
@@ -23,6 +24,8 @@ type App struct {
 	authService      *auth.Service
 	authHandler      *handler.AuthHandler
 	protectedHandler *handler.ProtectedHandler
+	videoService     *video.Service
+	videoHandler     *handler.VideoHandler
 }
 
 func New(cfg *config.Config, logger *zap.Logger) *App {
@@ -30,6 +33,14 @@ func New(cfg *config.Config, logger *zap.Logger) *App {
 	authService := auth.NewService(authStore, &cfg.Auth)
 	authHandler := handler.NewAuthHandler(authService, logger)
 	protectedHandler := handler.NewProtectedHandler(logger)
+
+	// Initialize video processing
+	videoStore := video.NewStore()
+	videoService, err := video.NewService(videoStore, &cfg.Video)
+	if err != nil {
+		logger.Fatal("Failed to initialize video service", zap.Error(err))
+	}
+	videoHandler := handler.NewVideoHandler(videoService, logger)
 
 	router := mux.NewRouter()
 
@@ -40,6 +51,8 @@ func New(cfg *config.Config, logger *zap.Logger) *App {
 		authService:      authService,
 		authHandler:      authHandler,
 		protectedHandler: protectedHandler,
+		videoService:     videoService,
+		videoHandler:     videoHandler,
 	}
 
 	app.setupRoutes()
@@ -57,6 +70,12 @@ func (a *App) setupRoutes() {
 	protectedRouter.Use(middleware.AuthMiddleware(a.authService))
 	protectedRouter.HandleFunc("/protected", a.protectedHandler.ProtectedEndpoint).Methods("GET")
 
+	// Video routes
+	protectedRouter.HandleFunc("/videos/upload", a.videoHandler.UploadVideo).Methods("POST")
+	protectedRouter.HandleFunc("/videos", a.videoHandler.ListVideos).Methods("GET")
+	protectedRouter.HandleFunc("/videos/{id}", a.videoHandler.GetVideo).Methods("GET")
+	protectedRouter.HandleFunc("/videos/{id}", a.videoHandler.DeleteVideo).Methods("DELETE")
+
 	a.router.HandleFunc("/health", a.healthCheck).Methods("GET")
 
 	a.logger.Info("Routes registered",
@@ -64,6 +83,10 @@ func (a *App) setupRoutes() {
 		zap.String("register", "POST /auth/register"),
 		zap.String("logout", "POST /auth/logout"),
 		zap.String("protected", "GET /api/protected"),
+		zap.String("upload_video", "POST /api/videos/upload"),
+		zap.String("list_videos", "GET /api/videos"),
+		zap.String("get_video", "GET /api/videos/{id}"),
+		zap.String("delete_video", "DELETE /api/videos/{id}"),
 		zap.String("health", "GET /health"),
 	)
 }

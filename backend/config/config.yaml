@@ -14,3 +14,9 @@ log:
   level: info        
   format: json       
   output: stdout     
+
+video:
+  storage_path: "videos"
+  max_file_size: 1073741824 # 1GB in bytes
+  max_files: 100
+  retention_days: 30
