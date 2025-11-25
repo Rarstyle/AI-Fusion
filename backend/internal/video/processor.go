@@ -74,20 +74,24 @@ func SanitizeFilename(filename string) string {
 
 // SaveVideoFile saves the uploaded file to the storage directory
 func SaveVideoFile(file multipart.File, storagePath string, filename string) (string, int64, error) {
-	if err := os.MkdirAll(storagePath, 0755); err != nil {
+	// Convert storagePath to absolute
+	absStoragePath, err := filepath.Abs(storagePath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to get absolute storage path: %w", err)
+	}
+
+	if err := os.MkdirAll(absStoragePath, 0755); err != nil {
 		return "", 0, fmt.Errorf("failed to create storage directory: %w", err)
 	}
 
-	filePath := filepath.Join(storagePath, filename)
+	filePath := filepath.Join(absStoragePath, filename)
 
-	// Create the file
 	dst, err := os.Create(filePath)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to create file: %w", err)
 	}
 	defer dst.Close()
 
-	// Copy file content
 	written, err := io.Copy(dst, file)
 	if err != nil {
 		os.Remove(filePath)

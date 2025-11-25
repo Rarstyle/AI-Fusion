@@ -36,7 +36,7 @@ func New(cfg *config.Config, logger *zap.Logger) *App {
 
 	// Initialize video processing
 	videoStore := video.NewStore()
-	videoService, err := video.NewService(videoStore, &cfg.Video)
+	videoService, err := video.NewService(videoStore, &cfg.Video, &cfg.ML)
 	if err != nil {
 		logger.Fatal("Failed to initialize video service", zap.Error(err))
 	}

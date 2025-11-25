@@ -32,12 +32,19 @@ type VideoConfig struct {
 	RetentionDays int    `mapstructure:"retention_days"`
 }
 
+type MLConfig struct {
+	PythonPath string `mapstructure:"python_path"`
+	ScriptPath string `mapstructure:"script_path"`
+	WorkDir    string `mapstructure:"work_dir"`
+}
+
 type Config struct {
 	Server ServerConfig `mapstructure:"server"`
 	Auth   AuthConfig   `mapstructure:"auth"`
 	Log    LogConfig    `mapstructure:"log"`
 	Video  VideoConfig  `mapstructure:"video"`
 	Env    string       `mapstructure:"env"`
+	ML     MLConfig     `mapstructure:"ml"`
 }
 
 func Load() (*Config, error) {
@@ -61,10 +68,15 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	config.ML = MLConfig{
+		PythonPath: viper.GetString("ml.python_path"),
+		ScriptPath: viper.GetString("ml.script_path"),
+		WorkDir:    viper.GetString("ml.work_dir"),
+	}
+
 	if err := validateConfig(&config); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
-
 	return &config, nil
 }
 
@@ -95,6 +107,10 @@ func validateConfig(config *Config) error {
 
 	if config.Auth.JWTSecret == "" {
 		return fmt.Errorf("JWT secret must be set")
+	}
+
+	if config.ML.PythonPath == "" || config.ML.ScriptPath == "" {
+		return fmt.Errorf("MLConfig: PythonPath and ScriptPath must be set")
 	}
 
 	validLogLevels := []string{"debug", "info", "warn", "error", "fatal"}

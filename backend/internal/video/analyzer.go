@@ -1,118 +1,59 @@
 package video
 
 import (
-	"time"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+
+	"github.com/Rarstyle/AI-Fusion/internal/config"
 )
 
-// Todo: Connect to ML service
-
-// Analyzer handles video analysis operations
-type Analyzer struct{}
-
-// NewAnalyzer creates a new analyzer instance
-func NewAnalyzer() *Analyzer {
-	return &Analyzer{}
+type Analyzer struct {
+	cfg *config.MLConfig
 }
 
-// AnalyzeVideo processes a video file and returns analysis results
-// This is a stub implementation that will be replaced with actual processing
-func (a *Analyzer) AnalyzeVideo(videoPath string, exerciseID string) (*AnalysisResult, error) {
-	// TODO: Implement actual video processing:
-	// 1. Extract frames from video
-	// 2. Run pose detection on each frame
-	// 3. Analyze form based on exercise type
-	// 4. Count reps and identify form issues
-	// 5. Generate feedback
-
-	// For now, return mock analysis results
-	return a.generateMockAnalysis(exerciseID), nil
+func NewAnalyzer(cfg *config.MLConfig) *Analyzer {
+	return &Analyzer{cfg: cfg}
 }
 
-// generateMockAnalysis creates sample analysis data for testing
-func (a *Analyzer) generateMockAnalysis(exerciseID string) *AnalysisResult {
-	now := time.Now().Unix()
-
-	// Generate sample reps
-	reps := []RepAnalysis{
-		{
-			RepNumber: 1,
-			Valid:     true,
-			Feedback: []FormFeedback{
-				{
-					Type:      "rep_counted",
-					Message:   "✓ Good rep",
-					Severity:  "info",
-					Timestamp: now,
-				},
-			},
-			Timestamp: now,
-		},
-		{
-			RepNumber: 2,
-			Valid:     false,
-			Feedback: []FormFeedback{
-				{
-					Type:      "depth",
-					Message:   "⚠️ Insufficient depth",
-					Severity:  "warning",
-					Timestamp: now + 5,
-				},
-			},
-			Timestamp: now + 5,
-		},
-		{
-			RepNumber: 3,
-			Valid:     true,
-			Feedback: []FormFeedback{
-				{
-					Type:      "rep_counted",
-					Message:   "✓ Good rep",
-					Severity:  "info",
-					Timestamp: now + 10,
-				},
-			},
-			Timestamp: now + 10,
-		},
+func (a *Analyzer) AnalyzeVideo(videoPath, exercise string) (*AnalysisResult, error) {
+	payload := map[string]string{
+		"session_id": "session-1",
+		"user_id":    "user-1",
+		"exercise":   exercise,
+		"video_path": videoPath,
 	}
 
-	// Generate overall feedback
-	feedback := []FormFeedback{
-		{
-			Type:      "knee_valgus",
-			Message:   "⚠️ Knees caving inward detected",
-			Severity:  "warning",
-			Timestamp: now + 2,
-		},
-		{
-			Type:      "forward_lean",
-			Message:   "⚠️ Excessive forward lean",
-			Severity:  "warning",
-			Timestamp: now + 7,
-		},
+	body, _ := json.Marshal(payload)
+
+	fmt.Printf("The video is located here: %s\n", videoPath)
+
+	// python3 /abs/path/to/bridge_analyzer.py
+	cmd := exec.Command(
+		a.cfg.PythonPath,
+		"-m", "ml_service.bridge_analyzer",
+		videoPath,
+	)
+	cmd.Dir = a.cfg.WorkDir        // ensures imports work inside ML service
+	cmd.Env = append(os.Environ()) // keep normal environment
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cmd.Stdin = bytes.NewReader(body)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ML analyzer failed: %v, stderr: %s", err, stderr.String())
 	}
 
-	validReps := 0
-	for _, rep := range reps {
-		if rep.Valid {
-			validReps++
-		}
+	var result AnalysisResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse ML output: %v", err)
 	}
 
-	formAccuracy := 0.0
-	if len(reps) > 0 {
-		formAccuracy = float64(validReps) / float64(len(reps)) * 100.0
-	}
-
-	summary := AnalysisSummary{
-		TotalReps:    len(reps),
-		ValidReps:    validReps,
-		FormAccuracy: formAccuracy,
-		CommonIssues: []string{"knee_valgus", "forward_lean"},
-	}
-
-	return &AnalysisResult{
-		Reps:     reps,
-		Feedback: feedback,
-		Summary:  summary,
-	}
+	return &result, nil
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Rarstyle/AI-Fusion/internal/config"
@@ -17,14 +18,18 @@ type Service struct {
 	analyzer   *Analyzer
 }
 
-func NewService(store *Store, cfg *config.VideoConfig) (*Service, error) {
+func NewService(store *Store, cfg *config.VideoConfig, mlCfg *config.MLConfig) (*Service, error) {
 	storageDir := filepath.Join("./storage", cfg.StoragePath)
+	absStorageDir, err := filepath.Abs(storageDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve storage directory: %w", err)
+	}
 
 	return &Service{
 		store:      store,
 		config:     cfg,
-		storageDir: storageDir,
-		analyzer:   NewAnalyzer(),
+		storageDir: absStorageDir, // pass absolute path
+		analyzer:   NewAnalyzer(mlCfg),
 	}, nil
 }
 
@@ -53,8 +58,11 @@ func (s *Service) UploadVideo(fileHeader *multipart.FileHeader, userID string) (
 
 	// Generate unique filename
 	videoID := uuid.New().String()
+
+	baseName := strings.TrimSuffix(fileHeader.Filename, filepath.Ext(fileHeader.Filename))
+	sanitizedFilename := SanitizeFilename(baseName)
 	ext := filepath.Ext(fileHeader.Filename)
-	sanitizedFilename := SanitizeFilename(fileHeader.Filename)
+
 	filename := fmt.Sprintf("%s_%s%s", videoID, sanitizedFilename, ext)
 
 	// Save file to storage
