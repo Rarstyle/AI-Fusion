@@ -173,6 +173,8 @@ def segment_squat_reps(pose_frames: List[PoseFrame]) -> List[RepSegment]:
     rep_start_time: Optional[float] = None
     rep_index = 0
     bottom_seen = False
+    last_drop: Optional[float] = None
+    peak_drop: float = 0.0
 
     for frame in pose_frames:
         hip_y = _hip_height(frame)
@@ -180,6 +182,8 @@ def segment_squat_reps(pose_frames: List[PoseFrame]) -> List[RepSegment]:
             continue
 
         relative_drop = (hip_y - top_level) / max(top_level, 1e-6)
+        prev_drop = last_drop
+        last_drop = relative_drop if last_drop is None else last_drop
 
         if state == "top":
             if relative_drop > descent_trigger:
@@ -187,15 +191,27 @@ def segment_squat_reps(pose_frames: List[PoseFrame]) -> List[RepSegment]:
                 current_frames = [frame]
                 rep_start_time = frame.timestamp_ms
                 bottom_seen = False
+                peak_drop = relative_drop
+                last_drop = relative_drop
         elif state == "going_down":
             current_frames.append(frame)
+            peak_drop = max(peak_drop, relative_drop)
+            # Mark bottom if we hit depth threshold.
             if relative_drop >= min_depth_drop:
                 state = "bottom"
                 bottom_seen = True
+            # If we start rising before hitting the strict threshold,
+            # still count this as a shallow rep.
+            elif prev_drop is not None and relative_drop < prev_drop - 0.01 and peak_drop > descent_trigger:
+                bottom_seen = True  # will be flagged as shallow later
+                state = "going_up"
+            last_drop = relative_drop
         elif state == "bottom":
             current_frames.append(frame)
             if relative_drop < ascent_trigger:
                 state = "going_up"
+            peak_drop = max(peak_drop, relative_drop)
+            last_drop = relative_drop
         elif state == "going_up":
             current_frames.append(frame)
             if relative_drop <= top_tolerance and bottom_seen:
@@ -212,6 +228,8 @@ def segment_squat_reps(pose_frames: List[PoseFrame]) -> List[RepSegment]:
                 current_frames = []
                 rep_start_time = None
                 bottom_seen = False
+                peak_drop = 0.0
+                last_drop = None
 
     if current_frames and bottom_seen:
         # Finalize a rep even if we did not return fully to the top position.
