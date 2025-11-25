@@ -62,12 +62,15 @@ func New(cfg *config.Config, logger *zap.Logger) *App {
 }
 
 func (a *App) setupRoutes() {
+
+	a.router.Use(middleware.LoggingMiddleware(a.logger))
+
 	// Apply CORS middleware to all routes
 	a.router.Use(middleware.CORSMiddleware)
 
-	a.router.HandleFunc("/auth/login", a.authHandler.Login).Methods("POST")
-	a.router.HandleFunc("/auth/register", a.authHandler.Register).Methods("POST")
-	a.router.HandleFunc("/auth/logout", a.authHandler.Logout).Methods("POST")
+	a.router.HandleFunc("/auth/register", a.authHandler.Register).Methods("POST", "OPTIONS")
+	a.router.HandleFunc("/auth/login", a.authHandler.Login).Methods("POST", "OPTIONS")
+	a.router.HandleFunc("/auth/logout", a.authHandler.Logout).Methods("POST", "OPTIONS")
 
 	protectedRouter := a.router.PathPrefix("/api").Subrouter()
 	protectedRouter.Use(middleware.AuthMiddleware(a.authService))
