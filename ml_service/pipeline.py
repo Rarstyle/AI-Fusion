@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import math
 import statistics
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -66,7 +67,7 @@ class RepFeatures:
     labels: Optional[List[str]] = None
 
 
-def extract_pose_features(video_path: str, frame_stride: int = 2) -> List[PoseFrame]:
+def extract_pose_features(video_path: str, frame_stride: int = 1) -> List[PoseFrame]:
     """
     Extract pose keypoints from a video using MediaPipe Pose.
 
@@ -427,3 +428,125 @@ def _torso_angle(frame: PoseFrame) -> Optional[float]:
     # regardless of whether the y-axis is pointing down or up in the input space.
     angle_radians = math.atan2(abs(dx), abs(dy))
     return math.degrees(angle_radians)
+
+
+def render_debug_overlay(
+    video_path: str,
+    frame_stride: int = 1,
+    output_path: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Render a video with pose landmarks and rep ids overlaid for debugging.
+    """
+    if cv2 is None or mp is None:
+        logger.warning("Cannot render overlay: cv2=%s, mediapipe=%s", cv2, mp)
+        return None
+
+    pose_frames = extract_pose_features(video_path, frame_stride=frame_stride)
+    rep_segments = segment_squat_reps(pose_frames)
+
+    capture = cv2.VideoCapture(video_path)
+    if not capture.isOpened():
+        logger.error("Failed to open video for overlay: %s", video_path)
+        return None
+
+    fps = capture.get(cv2.CAP_PROP_FPS) or 30.0
+    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    video_path_obj = Path(video_path)
+    if output_path:
+        overlay_path = Path(output_path)
+    else:
+        overlay_path = video_path_obj.with_stem(video_path_obj.stem + "_overlay")
+
+    writer = cv2.VideoWriter(
+        str(overlay_path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (width, height),
+    )
+
+    frame_lookup: Dict[int, PoseFrame] = {f.frame_index: f for f in pose_frames}
+    frame_to_rep: Dict[int, int] = {}
+    for seg in rep_segments:
+        for f in seg.frames:
+            frame_to_rep[f.frame_index] = seg.rep_index
+
+    landmark_enum = list(mp.solutions.pose.PoseLandmark)
+    drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+        color=(0, 255, 0),
+        thickness=2,
+        circle_radius=2,
+    )
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    from mediapipe.framework.formats import landmark_pb2  # type: ignore
+
+    last_rep_id: Optional[int] = None
+    last_hip_y: Optional[float] = None
+
+    frame_idx = 0
+    while True:
+        success, frame = capture.read()
+        if not success:
+            break
+
+        pose_frame = frame_lookup.get(frame_idx)
+        rep_id = frame_to_rep.get(frame_idx, last_rep_id)
+        hip_y = _hip_height(pose_frame) if pose_frame else None
+
+        if pose_frame and pose_frame.keypoints:
+            landmarks = []
+            for lm in landmark_enum:
+                kp = pose_frame.keypoints.get(lm.name.lower())
+                if kp:
+                    x, y, z, visibility = kp
+                else:
+                    x = y = z = 0.0
+                    visibility = 0.0
+                landmarks.append(
+                    landmark_pb2.NormalizedLandmark(
+                        x=float(x),
+                        y=float(y),
+                        z=float(z),
+                        visibility=float(visibility),
+                    )
+                )
+            landmark_list = landmark_pb2.NormalizedLandmarkList(landmark=landmarks)
+            mp.solutions.drawing_utils.draw_landmarks(
+                frame,
+                landmark_list,
+                mp.solutions.pose.POSE_CONNECTIONS,
+                drawing_spec,
+                drawing_spec,
+            )
+
+            # Update last seen values only when we have landmarks.
+            if rep_id is not None:
+                last_rep_id = rep_id
+            if hip_y is not None:
+                last_hip_y = hip_y
+
+        # Draw text overlays even when landmarks are missing, using last seen values.
+        rep_display = last_rep_id if last_rep_id is not None else "-"
+        cv2.putText(frame, f"rep {rep_display}", (20, 40), font, 1.0, (0, 255, 255), 2)
+        hip_display = hip_y if hip_y is not None else last_hip_y
+        if hip_display is not None:
+            cv2.putText(
+                frame,
+                f"hip_y {hip_display:.3f}",
+                (20, 70),
+                font,
+                0.8,
+                (255, 255, 0),
+                2,
+            )
+
+        writer.write(frame)
+        frame_idx += 1
+
+    capture.release()
+    writer.release()
+    logger.info("Rendered overlay to %s (reps=%s)", overlay_path, len(rep_segments))
+    return str(overlay_path)
