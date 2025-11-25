@@ -69,7 +69,7 @@ def test_segment_squat_reps_detects_two_reps_from_simple_signal():
 
 def test_analyze_squat_reps_flags_expected_issues():
     start = _make_pose_frame(0, 0.5, 0.0)
-    bottom = _make_pose_frame(1, 0.6, 33.0, shoulder_dx=0.3, knee_caving=True)
+    bottom = _make_pose_frame(1, 0.56, 33.0, shoulder_dx=0.3, knee_caving=True)
     finish = _make_pose_frame(2, 0.52, 66.0)
     segment = RepSegment(rep_index=1, start_ms=0.0, end_ms=66.0, frames=[start, bottom, finish])
 

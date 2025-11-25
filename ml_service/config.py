@@ -54,11 +54,12 @@ PATHS: dict[str, object] = {
 RULE_BASED_THRESHOLDS: dict[str, float] = {
     "baseline_frame_window": 10,
     "descent_trigger": 0.08,  # relative hip drop to start a rep.
-    "min_depth_drop": 0.22,  # relative hip drop needed to count as reaching bottom.
+    # Tuned for real sample videos: depth changes were topping out around 0.15–0.18.
+    "min_depth_drop": 0.15,  # relative hip drop needed to count as reaching bottom.
     "ascent_trigger": 0.15,  # relative hip position to start counting ascent.
     "top_tolerance": 0.05,  # how close to baseline to finish a rep.
     "knee_to_ankle_ratio_min": 0.8,  # ratio of knee width to ankle width to avoid caving.
-    "torso_forward_max_deg": 35.0,  # max torso lean angle before flagging rounding/lean.
+    "torso_forward_max_deg": 60.0,  # max torso lean angle before flagging rounding/lean.
     "visibility_threshold": 0.5,  # minimum keypoint visibility to trust the measurement.
 }
 

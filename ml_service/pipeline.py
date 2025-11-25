@@ -423,5 +423,7 @@ def _torso_angle(frame: PoseFrame) -> Optional[float]:
     if dy == 0:
         return None
 
-    angle_radians = math.atan2(dx, dy)
-    return abs(math.degrees(angle_radians))
+    # Use absolute offsets so the angle is measured against the vertical axis
+    # regardless of whether the y-axis is pointing down or up in the input space.
+    angle_radians = math.atan2(abs(dx), abs(dy))
+    return math.degrees(angle_radians)
