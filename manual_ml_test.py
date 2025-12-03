@@ -24,7 +24,8 @@ def main() -> None:
 
     overlay_path = render_debug_overlay(
         video_path=str(video_path),
-        frame_stride=1,
+        # Use the same stride as the analyzer (default=2) to keep rep counts aligned.
+        frame_stride=2,
         output_path=None,  # set a custom path if you want a specific filename/location
     )
     if overlay_path:

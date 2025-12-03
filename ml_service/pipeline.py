@@ -4,11 +4,12 @@ Rule-based pipeline for extracting poses, segmenting reps, and scoring squat qua
 
 from __future__ import annotations
 
+import bisect
 import logging
 import math
 import statistics
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .config import DEFAULT_EXERCISE, ERROR_DEFINITIONS, RULE_BASED_THRESHOLDS
@@ -67,7 +68,7 @@ class RepFeatures:
     labels: Optional[List[str]] = None
 
 
-def extract_pose_features(video_path: str, frame_stride: int = 1) -> List[PoseFrame]:
+def extract_pose_features(video_path: str, frame_stride: int = 2) -> List[PoseFrame]:
     """
     Extract pose keypoints from a video using MediaPipe Pose.
 
@@ -323,6 +324,219 @@ def extract_rep_features(rep_segments: List[RepSegment]) -> List[RepFeatures]:
     return rep_features
 
 
+def render_debug_overlay(
+    video_path: str,
+    frame_stride: int = 2,
+    output_path: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Render a pose overlay video to help debug MediaPipe detections.
+
+    Args:
+        video_path: input video location.
+        frame_stride: process every Nth frame to speed up rendering.
+        output_path: optional explicit path for the rendered video.
+    """
+    if cv2 is None or mp is None:
+        logger.warning("Cannot render overlay because cv2 or mediapipe is missing.")
+        return None
+
+    source = Path(video_path)
+    if not source.exists():
+        logger.error("Video not found: %s", video_path)
+        return None
+
+    capture = cv2.VideoCapture(str(source))
+    if not capture.isOpened():
+        logger.error("Failed to open video: %s", video_path)
+        return None
+
+    frame_stride = max(1, int(frame_stride or 1))
+    fps = capture.get(cv2.CAP_PROP_FPS) or 30.0
+    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    if width == 0 or height == 0:
+        logger.error("Video resolution is zero; cannot render overlay.")
+        capture.release()
+        return None
+
+    destination = Path(output_path) if output_path else source.with_name(f"{source.stem}_overlay.mp4")
+    writer = cv2.VideoWriter(
+        str(destination),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps / frame_stride,
+        (width, height),
+    )
+    if not writer.isOpened():
+        logger.error("Failed to open video writer for %s", destination)
+        capture.release()
+        writer.release()
+        return None
+
+    # Pre-compute rep boundaries using the same segmentation pipeline for a stable counter.
+    rep_end_frames: List[int] = []
+    try:
+        pre_frames = extract_pose_features(str(source), frame_stride=frame_stride)
+        rep_segments = segment_squat_reps(pre_frames)
+        rep_end_frames = sorted(seg.frames[-1].frame_index for seg in rep_segments if seg.frames)
+    except Exception as exc:  # pragma: no cover - defensive; overlay should still run.
+        logger.exception("Could not precompute rep boundaries for overlay: %s", exc)
+
+    # Lightweight in-loop rep counter reusing the same thresholds as the rule-based pipeline.
+    baseline_window = RULE_BASED_THRESHOLDS["baseline_frame_window"]
+    descent_trigger = RULE_BASED_THRESHOLDS["descent_trigger"]
+    min_depth_drop = RULE_BASED_THRESHOLDS["min_depth_drop"]
+    ascent_trigger = RULE_BASED_THRESHOLDS["ascent_trigger"]
+    top_tolerance = RULE_BASED_THRESHOLDS["top_tolerance"]
+    visibility_threshold = RULE_BASED_THRESHOLDS["visibility_threshold"]
+
+    baseline_samples: List[float] = []
+    top_level: Optional[float] = None
+    state = "top"
+    bottom_seen = False
+    rep_count = 0
+
+    written_frames = 0
+    cleanup_needed = False
+    try:
+        with mp.solutions.pose.Pose(
+            static_image_mode=False,
+            model_complexity=1,
+            enable_segmentation=False,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        ) as pose:
+            frame_index = 0
+            while capture.isOpened():
+                success, frame = capture.read()
+                if not success:
+                    break
+
+                if frame_index % frame_stride != 0:
+                    frame_index += 1
+                    continue
+
+                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = pose.process(image_rgb)
+
+                overlay_frame = frame.copy()
+                hip_y: Optional[float] = None
+                rep_count_from_segments = (
+                    bisect.bisect_right(rep_end_frames, frame_index) if rep_end_frames else 0
+                )
+                if results.pose_landmarks:
+                    try:
+                        connection_style_fn = getattr(
+                            mp.solutions.drawing_styles, "get_default_pose_connections_style", None
+                        )
+                        connection_spec = connection_style_fn() if callable(connection_style_fn) else None
+                        default_conn_spec = mp.solutions.drawing_utils.DrawingSpec(
+                            color=(0, 255, 0), thickness=2, circle_radius=2
+                        )
+                        if isinstance(connection_spec, dict):
+                            connection_spec = {
+                                conn: (spec or default_conn_spec) for conn, spec in connection_spec.items()
+                            }
+                        elif connection_spec is None:
+                            connection_spec = default_conn_spec
+                        mp.solutions.drawing_utils.draw_landmarks(
+                            overlay_frame,
+                            results.pose_landmarks,
+                            mp.solutions.pose.POSE_CONNECTIONS,
+                            landmark_drawing_spec=mp.solutions.drawing_styles.get_default_pose_landmarks_style(),
+                            connection_drawing_spec=connection_spec,
+                        )
+                    except KeyError as exc:
+                        # Some MediaPipe builds may not ship style entries for every connection tuple.
+                        logger.warning("Skipping connection styling due to missing key: %s", exc)
+                        mp.solutions.drawing_utils.draw_landmarks(
+                            overlay_frame,
+                            results.pose_landmarks,
+                            mp.solutions.pose.POSE_CONNECTIONS,
+                            landmark_drawing_spec=mp.solutions.drawing_styles.get_default_pose_landmarks_style(),
+                        )
+                    # Extract a simple hip height signal (average of visible hips) to display and drive rep count.
+                    hip_points: List[float] = []
+                    for hip_idx in (
+                        mp.solutions.pose.PoseLandmark.LEFT_HIP.value,
+                        mp.solutions.pose.PoseLandmark.RIGHT_HIP.value,
+                    ):
+                        lm = results.pose_landmarks.landmark[hip_idx]
+                        if lm.visibility >= visibility_threshold:
+                            hip_points.append(lm.y)
+                    if hip_points:
+                        hip_y = sum(hip_points) / len(hip_points)
+
+                # Update rep counter state machine using the same thresholds as segmentation.
+                if hip_y is not None:
+                    if top_level is None:
+                        baseline_samples.append(hip_y)
+                        if len(baseline_samples) >= baseline_window:
+                            top_level = statistics.median(baseline_samples)
+                    if top_level is None:
+                        top_level = hip_y
+
+                    if top_level != 0:
+                        relative_drop = (hip_y - top_level) / max(top_level, 1e-6)
+                        if state == "top":
+                            if relative_drop > descent_trigger:
+                                state = "going_down"
+                                bottom_seen = False
+                        elif state == "going_down":
+                            if relative_drop >= min_depth_drop:
+                                state = "bottom"
+                                bottom_seen = True
+                        elif state == "bottom":
+                            if relative_drop < ascent_trigger:
+                                state = "going_up"
+                        elif state == "going_up":
+                            if relative_drop <= top_tolerance and bottom_seen:
+                                rep_count += 1
+                                state = "top"
+                                bottom_seen = False
+
+                # Text overlay in the top-left with rep count and current hip y-coordinate.
+                rep_count_display = rep_count_from_segments if rep_end_frames else rep_count
+                text_lines = [f"reps: {rep_count_display}"]
+                if hip_y is not None:
+                    text_lines.append(f"hip_y: {hip_y:.3f}")
+                for idx, line in enumerate(text_lines):
+                    cv2.putText(
+                        overlay_frame,
+                        line,
+                        (10, 30 + idx * 26),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 0),
+                        2,
+                        cv2.LINE_AA,
+                    )
+                writer.write(overlay_frame)
+                written_frames += 1
+                frame_index += 1
+    except Exception as exc:  # pragma: no cover - runtime guard for manual use.
+        logger.exception("Failed to render debug overlay: %s", exc)
+        cleanup_needed = True
+    finally:
+        capture.release()
+        writer.release()
+
+    if cleanup_needed:
+        try:
+            destination.unlink(missing_ok=True)
+        except Exception:
+            logger.warning("Could not delete incomplete overlay at %s", destination)
+        return None
+
+    if written_frames == 0:
+        logger.warning("No frames were written to overlay for %s", video_path)
+        destination.unlink(missing_ok=True)
+        return None
+
+    logger.info("Overlay rendered to %s (%s frames).", destination, written_frames)
+    return str(destination)
+
+
 def _build_next_session_plan(errors_aggregated: Dict[str, int]) -> List[str]:
     plan: List[str] = []
     for code, count in errors_aggregated.items():
@@ -424,129 +638,6 @@ def _torso_angle(frame: PoseFrame) -> Optional[float]:
     if dy == 0:
         return None
 
-    # Use absolute offsets so the angle is measured against the vertical axis
-    # regardless of whether the y-axis is pointing down or up in the input space.
+    # Measure lean against the vertical axis; use absolute offsets so camera orientation does not flip the sign.
     angle_radians = math.atan2(abs(dx), abs(dy))
     return math.degrees(angle_radians)
-
-
-def render_debug_overlay(
-    video_path: str,
-    frame_stride: int = 1,
-    output_path: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Render a video with pose landmarks and rep ids overlaid for debugging.
-    """
-    if cv2 is None or mp is None:
-        logger.warning("Cannot render overlay: cv2=%s, mediapipe=%s", cv2, mp)
-        return None
-
-    pose_frames = extract_pose_features(video_path, frame_stride=frame_stride)
-    rep_segments = segment_squat_reps(pose_frames)
-
-    capture = cv2.VideoCapture(video_path)
-    if not capture.isOpened():
-        logger.error("Failed to open video for overlay: %s", video_path)
-        return None
-
-    fps = capture.get(cv2.CAP_PROP_FPS) or 30.0
-    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    video_path_obj = Path(video_path)
-    if output_path:
-        overlay_path = Path(output_path)
-    else:
-        overlay_path = video_path_obj.with_stem(video_path_obj.stem + "_overlay")
-
-    writer = cv2.VideoWriter(
-        str(overlay_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps,
-        (width, height),
-    )
-
-    frame_lookup: Dict[int, PoseFrame] = {f.frame_index: f for f in pose_frames}
-    frame_to_rep: Dict[int, int] = {}
-    for seg in rep_segments:
-        for f in seg.frames:
-            frame_to_rep[f.frame_index] = seg.rep_index
-
-    landmark_enum = list(mp.solutions.pose.PoseLandmark)
-    drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
-        color=(0, 255, 0),
-        thickness=2,
-        circle_radius=2,
-    )
-    font = cv2.FONT_HERSHEY_SIMPLEX
-
-    from mediapipe.framework.formats import landmark_pb2  # type: ignore
-
-    last_rep_id: Optional[int] = None
-    last_hip_y: Optional[float] = None
-
-    frame_idx = 0
-    while True:
-        success, frame = capture.read()
-        if not success:
-            break
-
-        pose_frame = frame_lookup.get(frame_idx)
-        rep_id = frame_to_rep.get(frame_idx, last_rep_id)
-        hip_y = _hip_height(pose_frame) if pose_frame else None
-
-        if pose_frame and pose_frame.keypoints:
-            landmarks = []
-            for lm in landmark_enum:
-                kp = pose_frame.keypoints.get(lm.name.lower())
-                if kp:
-                    x, y, z, visibility = kp
-                else:
-                    x = y = z = 0.0
-                    visibility = 0.0
-                landmarks.append(
-                    landmark_pb2.NormalizedLandmark(
-                        x=float(x),
-                        y=float(y),
-                        z=float(z),
-                        visibility=float(visibility),
-                    )
-                )
-            landmark_list = landmark_pb2.NormalizedLandmarkList(landmark=landmarks)
-            mp.solutions.drawing_utils.draw_landmarks(
-                frame,
-                landmark_list,
-                mp.solutions.pose.POSE_CONNECTIONS,
-                drawing_spec,
-                drawing_spec,
-            )
-
-            # Update last seen values only when we have landmarks.
-            if rep_id is not None:
-                last_rep_id = rep_id
-            if hip_y is not None:
-                last_hip_y = hip_y
-
-        # Draw text overlays even when landmarks are missing, using last seen values.
-        rep_display = last_rep_id if last_rep_id is not None else "-"
-        cv2.putText(frame, f"rep {rep_display}", (20, 40), font, 1.0, (0, 255, 255), 2)
-        hip_display = hip_y if hip_y is not None else last_hip_y
-        if hip_display is not None:
-            cv2.putText(
-                frame,
-                f"hip_y {hip_display:.3f}",
-                (20, 70),
-                font,
-                0.8,
-                (255, 255, 0),
-                2,
-            )
-
-        writer.write(frame)
-        frame_idx += 1
-
-    capture.release()
-    writer.release()
-    logger.info("Rendered overlay to %s (reps=%s)", overlay_path, len(rep_segments))
-    return str(overlay_path)
