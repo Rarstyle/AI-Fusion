@@ -1,21 +1,5 @@
 {
   "pages": {
-    "/_not-found/page": [
-      "static/chunks/74a3f_next_dist_f1f8e528._.js",
-      "static/chunks/PMLDL_Project_AI-Fusion_frontend_src_app_globals_e1e9b026.css",
-      "static/chunks/PMLDL_Project_AI-Fusion_frontend_src_app_layout_tsx_b83853f0._.js",
-      "static/chunks/74a3f_next_dist_c34a1015._.js",
-      "static/chunks/PMLDL_Project_AI-Fusion_frontend_src_app_not-found_tsx_2cdeaac7._.js",
-      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_69072424._.js",
-      "static/chunks/74a3f_next_dist_compiled_react-dom_b1054d8b._.js",
-      "static/chunks/74a3f_next_dist_compiled_next-devtools_index_dc482f0d.js",
-      "static/chunks/74a3f_next_dist_compiled_baed4d54._.js",
-      "static/chunks/74a3f_next_dist_client_afe92e3f._.js",
-      "static/chunks/74a3f_next_dist_8aa8c7f6._.js",
-      "static/chunks/74a3f_@swc_helpers_cjs_0b969fea._.js",
-      "static/chunks/PMLDL_Project_AI-Fusion_frontend_a0ff3932._.js",
-      "static/chunks/turbopack-PMLDL_Project_AI-Fusion_frontend_9edf3f9b._.js"
-    ],
     "/workout/[exerciseId]/page": [
       "static/chunks/74a3f_next_dist_f1f8e528._.js",
       "static/chunks/PMLDL_Project_AI-Fusion_frontend_src_app_globals_e1e9b026.css",

@@ -35,6 +35,19 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
   viewport?: any
 }
 
+type ApiRouteConfig = {
+  default: (req: any, res: any) => Promise<Response | void> | Response | void
+  config?: {
+    api?: {
+      bodyParser?: boolean | { sizeLimit?: string }
+      responseLimit?: string | number | boolean
+      externalResolver?: boolean
+    }
+    runtime?: 'edge' | 'experimental-edge' | 'nodejs' | string // necessary unless config is exported as const
+    maxDuration?: number
+  }
+}
+
 
 // Validate ../../src/app/exercises/page.tsx
 {
@@ -76,7 +89,23 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
 
 
 
+// Validate ../../src/pages/api/analyze-video.ts
+{
+  const handler = {} as typeof import("../../src/pages/api/analyze-video.js")
+  handler satisfies ApiRouteConfig
+}
 
+// Validate ../../src/pages/api/check-overlay.ts
+{
+  const handler = {} as typeof import("../../src/pages/api/check-overlay.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../src/pages/api/overlay.ts
+{
+  const handler = {} as typeof import("../../src/pages/api/overlay.js")
+  handler satisfies ApiRouteConfig
+}
 
 // Validate ../../src/app/layout.tsx
 {

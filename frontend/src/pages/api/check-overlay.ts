@@ -23,8 +23,8 @@ function findOverlayFilename(originalName?: string | null): string | null {
   const safeStemLower = safeStem.toLowerCase();
 
   const candidates: string[] = [];
-  ["", "_overlay", "_overlayk", "_overlay_with frames", "_overlay_ol"].forEach(
-    (suffix) => candidates.push(`${safeStem}${suffix}.mp4`),
+  ["_overlay", "_overlayk", "_overlay_with frames", "_overlay_ol"].forEach((suffix) =>
+    candidates.push(`${safeStem}${suffix}.mp4`),
   );
 
   for (const dir of overlaySearchDirs) {
@@ -99,21 +99,17 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   }
 
   const overlayFilename = findOverlayFilename(filename);
-  if (!overlayFilename) {
-    return res.status(404).json({ error: "Overlay not found" });
+  const overlayDescription = readOverlayDescription(filename);
+
+  if (!overlayFilename && !overlayDescription) {
+    return res.status(404).json({ error: "No overlay or description found" });
   }
 
-  const overlayDescription = readOverlayDescription(filename);
   return res.status(200).json({
-    overlayUrl: `/api/overlay?file=${encodeURIComponent(overlayFilename)}`,
+    overlayUrl: overlayFilename
+      ? `/api/overlay?file=${encodeURIComponent(overlayFilename)}`
+      : undefined,
     overlayDescription,
-    feedback: [
-      {
-        timestamp: Date.now(),
-        message: `Using pre-rendered overlay for ${filename}`,
-        severity: "info",
-        type: "overlay",
-      },
-    ],
+    feedback: [],
   });
 }

@@ -18,7 +18,6 @@ export default function WorkoutPage() {
   const [uploading, setUploading] = useState(false);
   const [feedback, setFeedback] = useState<FormFeedback[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [overlayUrl, setOverlayUrl] = useState<string | null>(null);
   const [overlayDescription, setOverlayDescription] = useState<string | null>(null);
 
   const handleComplete = (reps: RepData[], feedback: FormFeedback[]) => {
@@ -259,7 +258,6 @@ export default function WorkoutPage() {
             e.preventDefault();
             setError(null);
             setFeedback(null);
-            setOverlayUrl(null);
             setOverlayDescription(null);
             setUploading(true);
             const formData = new FormData(e.target as HTMLFormElement);
@@ -275,31 +273,21 @@ export default function WorkoutPage() {
                 if (overlayCheck.ok) {
                   const data = await overlayCheck.json();
                   setFeedback(data.feedback || []);
-                  if (data.overlayUrl) {
-                    setOverlayUrl(data.overlayUrl);
-                  }
                   if (data.overlayDescription) {
                     setOverlayDescription(data.overlayDescription);
                   }
                   setUploading(false);
                   return;
+                } else {
+                  setError(
+                    "No local info found for this video. Add a description file in frontend/info or start the backend for live analysis.",
+                  );
+                  setUploading(false);
+                  return;
                 }
               }
 
-              // Fallback: upload to analyzer (may require backend running).
-              const res = await fetch("/api/analyze-video", {
-                method: "POST",
-                body: formData,
-              });
-              if (!res.ok) throw new Error("Failed to analyze video");
-              const data = await res.json();
-              setFeedback(data.feedback || []);
-              if (data.overlayUrl) {
-                setOverlayUrl(data.overlayUrl);
-                if (data.overlayDescription) {
-                  setOverlayDescription(data.overlayDescription);
-                }
-              }
+              setError("No local info found for this video.");
             } catch (err: any) {
               setError(err.message || "Unknown error");
             } finally {
@@ -334,19 +322,12 @@ export default function WorkoutPage() {
                 ))}
               </ul>
             </div>
-            {overlayUrl && (
+            {overlayDescription && (
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-white">Overlay Preview</h3>
-                <video
-                  controls
-                  src={overlayUrl}
-                  className="w-full rounded-lg border border-slate-700"
-                />
-                {overlayDescription && (
-                  <div className="text-sm text-gray-300 whitespace-pre-line border border-slate-700 rounded-lg p-3 bg-slate-900/50">
-                    {overlayDescription}
-                  </div>
-                )}
+                <h3 className="text-lg font-semibold text-white">Description</h3>
+                <div className="text-sm text-gray-300 whitespace-pre-line border border-slate-700 rounded-lg p-3 bg-slate-900/50">
+                  {overlayDescription}
+                </div>
               </div>
             )}
           </div>

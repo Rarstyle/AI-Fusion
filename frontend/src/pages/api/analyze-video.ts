@@ -31,8 +31,8 @@ function findOverlayFilename(originalName?: string | null): string | null {
   const safeStemLower = safeStem.toLowerCase();
 
   const candidates: string[] = [];
-  ["", "_overlay", "_overlayk", "_overlay_with frames", "_overlay_ol"].forEach(
-    (suffix) => candidates.push(`${safeStem}${suffix}.mp4`),
+  ["_overlay", "_overlayk", "_overlay_with frames", "_overlay_ol"].forEach((suffix) =>
+    candidates.push(`${safeStem}${suffix}.mp4`),
   );
 
   for (const dir of overlaySearchDirs) {
@@ -121,22 +121,16 @@ export default async function handler(
     const fileRecord = Array.isArray(videoFile) ? videoFile[0] : videoFile;
     const originalName = fileRecord.originalFilename || fileRecord.newFilename;
 
-    // Offline path: serve existing overlay + description if present.
+    // Offline path: serve existing description (and overlay if present) without backend.
     const overlayFilename = findOverlayFilename(originalName);
-    if (overlayFilename) {
-      const now = Date.now();
-      const overlayDescription = readOverlayDescription(originalName);
+    const overlayDescription = readOverlayDescription(originalName);
+    if (overlayFilename || overlayDescription) {
       return res.status(200).json({
-        overlayUrl: `/api/overlay?file=${encodeURIComponent(overlayFilename)}`,
+        overlayUrl: overlayFilename
+          ? `/api/overlay?file=${encodeURIComponent(overlayFilename)}`
+          : undefined,
         overlayDescription,
-        feedback: [
-          {
-            timestamp: now,
-            message: `Using pre-rendered overlay for ${originalName}`,
-            severity: "info",
-            type: "overlay",
-          },
-        ],
+        feedback: [],
       });
     }
 

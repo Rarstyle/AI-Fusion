@@ -1,5 +1,4 @@
 {
-  "/_app": "pages/_app.js",
-  "/_document": "pages/_document.js",
-  "/_error": "pages/_error.js"
+  "/api/check-overlay": "pages/api/check-overlay.js",
+  "/api/overlay": "pages/api/overlay.js"
 }
