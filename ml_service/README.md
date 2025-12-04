@@ -21,6 +21,12 @@ Rule-based squat analysis plus a deterministic stub for other cases.
 4) (Future) Segments -> `extract_rep_features(rep_segments)`  
    - Stub that will hold engineered numeric features (angles, amplitudes, durations) for a trainable model.
 
+## Pose graph + GNN (SkeletonGCN)
+- The skeleton is represented as a graph where each MediaPipe landmark is a node and anatomical connections are edges; adjacency is normalized with self-loops.  
+- Node features are `[x, y, z, visibility]` per joint, producing a matrix `[num_nodes, in_features]`; helpers convert `PoseFrame`/`RepSegment` into tensors.  
+- `SkeletonGCN` (simple 2-layer GCN + graph pooling) outputs graph-level logits for rep quality/error classification.  
+- This path is experimental and not hooked into production inference; the default system remains rule-based.
+
 ## Current behavior
 - Default path is the deterministic stub (`STUB_MODE = True`).  
 - When `STUB_MODE = False` and `USE_RULE_BASED_ANALYZER = True`, `_analyze_session_real` will run the real squat pipeline. Other exercises currently return a "not supported yet" message with zero reps.
@@ -74,3 +80,6 @@ return feedback.to_dict()
 - Extract richer per-rep features in `extract_rep_features` (joint angles, stability, cadence).  
 - Train a classifier (RandomForest, GradientBoosting, or a small NN) to predict error labels per rep.  
 - Swap `USE_ML_MODEL_ANALYZER` to `True` once the model path/config is populated and `_analyze_session_real` is wired to the ML scorer.
+- Collect labeled reps and train `SkeletonGCN` for graph-level rep quality (good/bad + specific faults).  
+- Compare F1/precision against the rule-based baseline; tune thresholds or model ensemble accordingly.  
+- Explore Graph Attention Network (GAT) or related GNN variants if the simple GCN underfits.

@@ -18,6 +18,7 @@ from .config import (
     USE_RULE_BASED_ANALYZER,
 )
 from .models import AnalysisRequest, ErrorCodes, RepFeedback, SessionFeedback
+from .gnn_skeleton import SkeletonGCN, TORCH_AVAILABLE, build_gnn_input_for_rep
 from .pipeline import analyze_squat_reps, extract_pose_features, segment_squat_reps
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,9 @@ def analyze_session(request: AnalysisRequest) -> SessionFeedback:
 
     This is a stub (Plan B) implementation: it generates deterministic,
     rule-based feedback for now. In the future this function will load
-    and invoke a real ML pipeline to score each rep.
+    and invoke a real ML pipeline to score each rep. Alongside the rule-based
+    baseline, the repo also contains an experimental SkeletonGCN that treats
+    pose landmarks as a graph for future training/evaluation against the rules.
     """
     rng = _make_rng(request)
 
@@ -131,6 +134,31 @@ def _build_next_session_plan(errors_aggregated: Dict[str, int]) -> List[str]:
         plan.append("Great job! Keep the same technique for the next session.")
 
     return plan
+
+
+def analyze_rep_with_gnn(rep_segment):
+    """
+    Experimental function: turn a RepSegment into a skeleton graph,
+    run it through SkeletonGCN, and return logits or predicted classes.
+
+    Currently used as an architectural stub for GNN experiments; the main
+    production path still relies on the rule-based engine.
+    """
+    if not TORCH_AVAILABLE:
+        raise RuntimeError("PyTorch is not available, GNN analysis is disabled.")
+
+    import torch  # Local import to avoid hard dependency for rule-based usage.
+
+    # Example initialization. TODO: load trained weights and manage device placement.
+    in_features = 4  # [x, y, z, visibility]
+    model = SkeletonGCN(in_features=in_features, hidden_dim=32, out_dim=3)
+    model.eval()
+
+    x = build_gnn_input_for_rep(rep_segment)  # [1, num_nodes, in_features]
+    with torch.no_grad():
+        logits = model(x)
+    # TODO: softmax logits and map to error classes (good / shallow_depth / knees_caving / etc.).
+    return logits
 
 
 def _analyze_session_real(request: AnalysisRequest) -> SessionFeedback:
