@@ -1,0 +1,34 @@
+{
+  "exercise": "squat",
+  "reps_total": 3,
+  "reps_good": 1,
+  "reps_bad": 2,
+  "errors_aggregated": {
+    "knees_caving": 2
+  },
+  "per_rep": [
+    {
+      "rep_index": 1,
+      "ok": false,
+      "issues": [
+        "knees_caving"
+      ]
+    },
+    {
+      "rep_index": 2,
+      "ok": true,
+      "issues": []
+    },
+    {
+      "rep_index": 3,
+      "ok": false,
+      "issues": [
+        "knees_caving"
+      ]
+    }
+  ],
+  "next_session_plan": [
+    "Push your knees out as you descend.",
+    "Strengthen glutes with banded walks."
+  ]
+}

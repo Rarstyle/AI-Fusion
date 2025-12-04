@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Increase body size for Server Actions / route handlers to allow video uploads.
+  serverActions: {
+    bodySizeLimit: "200mb",
+  },
 };
 
 export default nextConfig;

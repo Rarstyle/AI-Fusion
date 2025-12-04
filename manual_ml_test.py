@@ -9,7 +9,7 @@ from ml_service.pipeline import render_debug_overlay
 def main() -> None:
     # Adjust this path if you want to analyze a different video.
     video_path = Path(
-        "C:/Users/user/Desktop/rarstyle/VS Projects/PMLDL_Project/AI-Fusion/squat_good.mp4"
+        "C:/Users/user/Desktop/rarstyle/VS Projects/PMLDL_Project/AI-Fusion/squats1_right_cutted.mp4"
     )
 
     request = AnalysisRequest(

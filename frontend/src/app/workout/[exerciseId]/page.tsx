@@ -18,6 +18,8 @@ export default function WorkoutPage() {
   const [uploading, setUploading] = useState(false);
   const [feedback, setFeedback] = useState<FormFeedback[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [overlayUrl, setOverlayUrl] = useState<string | null>(null);
+  const [overlayDescription, setOverlayDescription] = useState<string | null>(null);
 
   const handleComplete = (reps: RepData[], feedback: FormFeedback[]) => {
     // Store session data in sessionStorage
@@ -257,9 +259,34 @@ export default function WorkoutPage() {
             e.preventDefault();
             setError(null);
             setFeedback(null);
+            setOverlayUrl(null);
+            setOverlayDescription(null);
             setUploading(true);
             const formData = new FormData(e.target as HTMLFormElement);
             try {
+              const file = (formData.get("video") as File) || null;
+              const fileName = file?.name || "";
+
+              // First, try offline overlay lookup to avoid uploading large files.
+              if (fileName) {
+                const overlayCheck = await fetch(
+                  `/api/check-overlay?filename=${encodeURIComponent(fileName)}`,
+                );
+                if (overlayCheck.ok) {
+                  const data = await overlayCheck.json();
+                  setFeedback(data.feedback || []);
+                  if (data.overlayUrl) {
+                    setOverlayUrl(data.overlayUrl);
+                  }
+                  if (data.overlayDescription) {
+                    setOverlayDescription(data.overlayDescription);
+                  }
+                  setUploading(false);
+                  return;
+                }
+              }
+
+              // Fallback: upload to analyzer (may require backend running).
               const res = await fetch("/api/analyze-video", {
                 method: "POST",
                 body: formData,
@@ -267,6 +294,12 @@ export default function WorkoutPage() {
               if (!res.ok) throw new Error("Failed to analyze video");
               const data = await res.json();
               setFeedback(data.feedback || []);
+              if (data.overlayUrl) {
+                setOverlayUrl(data.overlayUrl);
+                if (data.overlayDescription) {
+                  setOverlayDescription(data.overlayDescription);
+                }
+              }
             } catch (err: any) {
               setError(err.message || "Unknown error");
             } finally {
@@ -292,13 +325,30 @@ export default function WorkoutPage() {
         </form>
         {error && <div className="mt-4 text-red-400 text-center">{error}</div>}
         {feedback && (
-          <div className="mt-6">
-            <h3 className="text-lg font-semibold text-white mb-2">Feedback</h3>
-            <ul className="text-gray-300 space-y-2">
-              {feedback.map((fb, idx) => (
-                <li key={idx}>{fb.message}</li>
-              ))}
-            </ul>
+          <div className="mt-6 space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Feedback</h3>
+              <ul className="text-gray-300 space-y-2">
+                {feedback.map((fb, idx) => (
+                  <li key={idx}>{fb.message}</li>
+                ))}
+              </ul>
+            </div>
+            {overlayUrl && (
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-white">Overlay Preview</h3>
+                <video
+                  controls
+                  src={overlayUrl}
+                  className="w-full rounded-lg border border-slate-700"
+                />
+                {overlayDescription && (
+                  <div className="text-sm text-gray-300 whitespace-pre-line border border-slate-700 rounded-lg p-3 bg-slate-900/50">
+                    {overlayDescription}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
